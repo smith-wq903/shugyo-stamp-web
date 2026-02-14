@@ -19,16 +19,23 @@ export interface StampsResponse {
   streak: number;
 }
 
+export interface CustomStamp {
+  id: number;
+  name: string;
+  image: string; // Base64 data URL
+}
+
 export interface ExportData {
-  version: 1;
+  version: 1 | 2;
   exported_at: string;
   subjects: Subject[];
   stamps: Array<{ date: string; subject_id: number; stamp: string }>;
   settings: Record<string, string>;
+  custom_stamps?: CustomStamp[];
 }
 
 const DB_NAME = "shugyo-stamp";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbInstance: IDBDatabase | null = null;
 
@@ -38,26 +45,30 @@ function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
 
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
+      const oldVersion = event.oldVersion;
 
-      if (!db.objectStoreNames.contains("subjects")) {
-        const store = db.createObjectStore("subjects", {
+      if (oldVersion < 1) {
+        const subjectsStore = db.createObjectStore("subjects", {
           keyPath: "id",
           autoIncrement: true,
         });
-        store.createIndex("sort_order", "sort_order");
-      }
+        subjectsStore.createIndex("sort_order", "sort_order");
 
-      if (!db.objectStoreNames.contains("stamps")) {
-        const store = db.createObjectStore("stamps", {
+        const stampsStore = db.createObjectStore("stamps", {
           keyPath: ["date", "subject_id"],
         });
-        store.createIndex("date", "date");
+        stampsStore.createIndex("date", "date");
+
+        db.createObjectStore("settings", { keyPath: "key" });
       }
 
-      if (!db.objectStoreNames.contains("settings")) {
-        db.createObjectStore("settings", { keyPath: "key" });
+      if (oldVersion < 2) {
+        db.createObjectStore("custom_stamps", {
+          keyPath: "id",
+          autoIncrement: true,
+        });
       }
     };
 
@@ -158,7 +169,6 @@ export async function renameSubject(
 }
 
 export async function deleteSubject(id: number): Promise<void> {
-  // 関連スタンプを削除
   const allStamps = await getAll<{
     date: string;
     subject_id: number;
@@ -169,6 +179,21 @@ export async function deleteSubject(id: number): Promise<void> {
     await del("stamps", [s.date, s.subject_id]);
   }
   await del("subjects", id);
+}
+
+// --- Custom Stamps ---
+
+export async function getCustomStamps(): Promise<CustomStamp[]> {
+  return getAll<CustomStamp>("custom_stamps");
+}
+
+export async function addCustomStamp(name: string, image: string): Promise<CustomStamp> {
+  const id = await put("custom_stamps", { name, image });
+  return { id: id as number, name, image };
+}
+
+export async function deleteCustomStamp(id: number): Promise<void> {
+  await del("custom_stamps", id);
 }
 
 // --- Stamps ---
@@ -245,7 +270,6 @@ async function calcStreak(
 ): Promise<number> {
   if (subjects.length === 0) return 0;
 
-  // 全教科にスタンプがある日を集める
   const dateCount = new Map<string, Set<number>>();
   for (const s of allStamps) {
     if (!dateCount.has(s.date)) dateCount.set(s.date, new Set());
@@ -297,9 +321,10 @@ export async function exportData(): Promise<ExportData> {
     stamp: string;
   }>("stamps");
   const settings = await getSettings();
+  const customStamps = await getCustomStamps();
 
   return {
-    version: 1,
+    version: 2,
     exported_at: new Date().toISOString(),
     subjects,
     stamps: stamps.map((s) => ({
@@ -308,17 +333,17 @@ export async function exportData(): Promise<ExportData> {
       stamp: s.stamp,
     })),
     settings,
+    custom_stamps: customStamps,
   };
 }
 
 export async function importData(data: ExportData): Promise<void> {
-  if (data.version !== 1) {
+  if (data.version !== 1 && data.version !== 2) {
     throw new Error("サポートされていないデータ形式です");
   }
 
   const db = await openDb();
 
-  // 全ストアをクリア
   const clearStore = (name: string) =>
     new Promise<void>((resolve, reject) => {
       const t = db.transaction(name, "readwrite");
@@ -330,13 +355,12 @@ export async function importData(data: ExportData): Promise<void> {
   await clearStore("subjects");
   await clearStore("stamps");
   await clearStore("settings");
+  await clearStore("custom_stamps");
 
-  // 教科をインポート
   for (const sub of data.subjects) {
     await put("subjects", sub);
   }
 
-  // スタンプをインポート
   for (const s of data.stamps) {
     await put("stamps", {
       date: s.date,
@@ -345,8 +369,13 @@ export async function importData(data: ExportData): Promise<void> {
     });
   }
 
-  // 設定をインポート
   for (const [key, value] of Object.entries(data.settings)) {
     await put("settings", { key, value });
+  }
+
+  if (data.custom_stamps) {
+    for (const cs of data.custom_stamps) {
+      await put("custom_stamps", cs);
+    }
   }
 }

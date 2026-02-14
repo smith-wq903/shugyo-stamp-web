@@ -424,3 +424,92 @@ body {
   background: #fee;
   color: #e74c3c;
 }
+
+/* カスタムスタンプ管理 */
+.custom-stamp-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.custom-stamp-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f9f4ef;
+  border-radius: 10px;
+  padding: 6px 10px;
+}
+
+.custom-stamp-name {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+/* スタンプ画像（ピッカー内・カレンダーセル内） */
+.stamp-img {
+  display: block;
+  border-radius: 4px;
+}
+
+.stamp-img-cell {
+  display: inline-block;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+
+/* 集計（Stats） */
+.stats {
+  background: white;
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+.stats-title {
+  font-size: 1.1rem;
+  color: #e67e22;
+  margin-bottom: 10px;
+}
+
+.stats-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.stats-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #fef9f0;
+}
+
+.stats-label {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.stats-value {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #e67e22;
+}
+
+.stats-total {
+  background: linear-gradient(135deg, #fff3e0, #ffecd2);
+  margin-top: 4px;
+}
+
+.stats-total .stats-label {
+  font-weight: bold;
+  color: #555;
+}
+
+.stats-total .stats-value {
+  font-size: 1.2rem;
+}

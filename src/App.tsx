@@ -8,11 +8,37 @@ import {
   addSubject,
   renameSubject,
   deleteSubject,
+  getCustomStamps,
+  addCustomStamp,
+  deleteCustomStamp,
   exportData,
   importData,
   Subject,
+  CustomStamp,
   ExportData,
 } from "./db";
+
+// 画像を64x64に縮小してBase64に変換（メモリ節約）
+function resizeImage(file: File, maxSize: number = 64): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = maxSize;
+        canvas.height = maxSize;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, maxSize, maxSize);
+        resolve(canvas.toDataURL("image/png", 0.8));
+      };
+      img.onerror = reject;
+      img.src = reader.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function App() {
   const [ready, setReady] = useState(false);
@@ -22,12 +48,15 @@ export default function App() {
   const [startTime, setStartTime] = useState("16:00");
   const [endTime, setEndTime] = useState("18:00");
 
-  // 教科管理
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [newSubjectName, setNewSubjectName] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editingName, setEditingName] = useState("");
   const [subjectsVersion, setSubjectsVersion] = useState(0);
+
+  // カスタムスタンプ
+  const [customStamps, setCustomStamps] = useState<CustomStamp[]>([]);
+  const stampFileRef = useRef<HTMLInputElement>(null);
 
   // インポート用
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +70,7 @@ export default function App() {
       setEndTime(end);
       checkHomeworkTime(start, end);
       await loadSubjects();
+      await loadCustomStamps();
       setReady(true);
     });
   }, []);
@@ -48,6 +78,11 @@ export default function App() {
   const loadSubjects = async () => {
     const subs = await getSubjects();
     setSubjects(subs);
+  };
+
+  const loadCustomStamps = async () => {
+    const cs = await getCustomStamps();
+    setCustomStamps(cs);
   };
 
   const checkHomeworkTime = (start: string, end: string) => {
@@ -101,6 +136,29 @@ export default function App() {
     setSubjectsVersion((v) => v + 1);
   };
 
+  // --- カスタムスタンプ ---
+  const handleAddStampImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const image = await resizeImage(file, 64);
+      const name = file.name.replace(/\.[^.]+$/, "").substring(0, 10);
+      await addCustomStamp(name, image);
+      await loadCustomStamps();
+      setSubjectsVersion((v) => v + 1);
+    } catch {
+      alert("画像の読み込みに失敗しました。");
+    }
+    e.target.value = "";
+  };
+
+  const handleDeleteStamp = async (id: number, name: string) => {
+    if (!confirm(`スタンプ「${name}」を削除しますか？`)) return;
+    await deleteCustomStamp(id);
+    await loadCustomStamps();
+    setSubjectsVersion((v) => v + 1);
+  };
+
   // --- エクスポート ---
   const handleExport = async () => {
     const data = await exportData();
@@ -122,7 +180,6 @@ export default function App() {
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     try {
       const text = await file.text();
       const data: ExportData = JSON.parse(text);
@@ -134,18 +191,17 @@ export default function App() {
         return;
       }
       await importData(data);
-      // 再読み込み
       const s = await getSettings();
       setStartTime(s.homework_start || "16:00");
       setEndTime(s.homework_end || "18:00");
       checkHomeworkTime(s.homework_start || "16:00", s.homework_end || "18:00");
       await loadSubjects();
+      await loadCustomStamps();
       setSubjectsVersion((v) => v + 1);
       alert("インポートしました！");
     } catch {
       alert("ファイルの読み込みに失敗しました。正しいファイルか確認してください。");
     }
-    // ファイル選択をリセット
     e.target.value = "";
   };
 
@@ -273,6 +329,35 @@ export default function App() {
               ついか
             </button>
           </div>
+
+          <h3 className="section-title">スタンプ画像</h3>
+          <div className="custom-stamp-list">
+            {customStamps.map((cs) => (
+              <div key={cs.id} className="custom-stamp-item">
+                <img src={cs.image} alt={cs.name} width={40} height={40} />
+                <span className="custom-stamp-name">{cs.name}</span>
+                <button
+                  className="btn-icon btn-icon-danger"
+                  onClick={() => handleDeleteStamp(cs.id, cs.name)}
+                >
+                  🗑️
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            className="btn btn-secondary"
+            onClick={() => stampFileRef.current?.click()}
+          >
+            🖼️ 画像をついか
+          </button>
+          <input
+            ref={stampFileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleAddStampImage}
+          />
 
           <h3 className="section-title">データ</h3>
           <div className="data-actions">
